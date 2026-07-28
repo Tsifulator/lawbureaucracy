@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="el">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Νομικός βοηθός ΕΑΔΗΣΥ</title>
+<style>
+  :root {
+    --bg:#ffffff; --panel:#f7f7f8; --side:#f4f4f6; --text:#1a1a1c; --muted:#8a8a90;
+    --line:#ececef; --accent:#10a37f; --user-bg:#f0f1f3; --chip-bg:#eef2f1;
+    --shadow:0 1px 2px rgba(0,0,0,.05),0 8px 24px rgba(0,0,0,.06); --radius:16px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#1a1a1d; --panel:#232327; --side:#161618; --text:#ececee; --muted:#9a9aa2;
+      --line:#2e2e33; --accent:#19c39a; --user-bg:#2b2b31; --chip-bg:#263230;
+      --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 30px rgba(0,0,0,.35); }
+  }
+  * { box-sizing:border-box; }
+  html,body { height:100%; margin:0; }
+  body { background:var(--bg); color:var(--text); display:flex; height:100vh; overflow:hidden;
+    font:15px/1.6 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased; }
+
+  /* ---------- sidebar ---------- */
+  aside { width:262px; flex-shrink:0; background:var(--side); border-right:1px solid var(--line);
+    display:flex; flex-direction:column; }
+  .newbtn { margin:12px; padding:10px 12px; border:1px solid var(--line); border-radius:12px;
+    background:var(--panel); color:var(--text); font:inherit; font-weight:550; cursor:pointer;
+    display:flex; align-items:center; gap:8px; transition:.15s; }
+  .newbtn:hover { border-color:var(--accent); color:var(--accent); }
+  .chats { flex:1; overflow-y:auto; padding:4px 8px 12px; }
+  .chat { display:flex; align-items:center; gap:8px; padding:9px 10px; border-radius:10px;
+    cursor:pointer; color:var(--text); font-size:13.5px; transition:.12s; }
+  .chat:hover { background:var(--panel); }
+  .chat.active { background:var(--panel); }
+  .chat .t { flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .chat .del { opacity:0; border:0; background:transparent; color:var(--muted); cursor:pointer;
+    font-size:14px; padding:2px 4px; border-radius:6px; }
+  .chat:hover .del { opacity:.7; } .chat .del:hover { opacity:1; color:#e0533d; background:var(--bg); }
+  aside .foot { padding:12px 16px; border-top:1px solid var(--line); color:var(--muted); font-size:11.5px; }
+
+  /* ---------- main ---------- */
+  .col { flex:1; display:flex; flex-direction:column; min-width:0; }
+  header { display:flex; align-items:center; gap:10px; padding:14px 20px; border-bottom:1px solid var(--line);
+    background:color-mix(in srgb,var(--bg) 88%,transparent); backdrop-filter:saturate(180%) blur(12px); }
+  .dot { width:9px; height:9px; border-radius:50%; background:var(--accent);
+    box-shadow:0 0 0 4px color-mix(in srgb,var(--accent) 18%,transparent); }
+  header h1 { font-size:14px; font-weight:600; margin:0; }
+  header .sub { color:var(--muted); font-size:12px; margin-left:auto; }
+
+  main { flex:1; overflow-y:auto; scroll-behavior:smooth; }
+  .thread { max-width:720px; margin:0 auto; padding:24px 20px 130px; display:flex; flex-direction:column; gap:22px; }
+
+  .empty { color:var(--muted); text-align:center; margin-top:14vh; }
+  .empty .big { font-size:25px; color:var(--text); font-weight:600; margin-bottom:8px; }
+  .examples { display:flex; flex-wrap:wrap; gap:8px; justify-content:center; margin-top:22px; }
+  .ex { border:1px solid var(--line); background:var(--panel); color:var(--text); padding:8px 12px;
+    border-radius:999px; font-size:13px; cursor:pointer; transition:.15s; }
+  .ex:hover { border-color:var(--accent); color:var(--accent); }
+
+  .msg.user { align-self:flex-end; max-width:82%; background:var(--user-bg); padding:11px 15px;
+    border-radius:var(--radius) var(--radius) 4px var(--radius); }
+  .msg.bot { align-self:stretch; }
+  .msg.bot .who { display:flex; align-items:center; gap:8px; color:var(--muted); font-size:12px; margin-bottom:8px; }
+  .answer { white-space:pre-wrap; word-wrap:break-word; }
+  .answer strong { font-weight:650; }
+  .cursor::after { content:"▋"; color:var(--accent); animation:blink 1s steps(2) infinite; margin-left:1px; }
+  @keyframes blink { 50%{opacity:0;} }
+
+  .sources { margin-top:14px; display:flex; flex-wrap:wrap; gap:7px; align-items:center; }
+  .sources .lbl { color:var(--muted); font-size:12px; margin-right:2px; }
+  .chip { text-decoration:none; color:var(--text); background:var(--chip-bg); border:1px solid var(--line);
+    padding:4px 10px; border-radius:999px; font-size:12.5px; transition:.15s; }
+  .chip:hover { border-color:var(--accent); color:var(--accent); }
+  .thinking { color:var(--muted); font-size:13.5px; display:inline-flex; gap:6px; align-items:center; }
+  .thinking .d { width:6px; height:6px; border-radius:50%; background:var(--muted); animation:bob 1.2s infinite; }
+  .thinking .d:nth-child(2){animation-delay:.15s} .thinking .d:nth-child(3){animation-delay:.3s}
+  @keyframes bob { 0%,60%,100%{transform:translateY(0);opacity:.4} 30%{transform:translateY(-4px);opacity:1} }
+
+  footer { background:linear-gradient(to top,var(--bg) 70%,transparent); padding:14px 20px 18px; }
+  .composer { max-width:720px; margin:0 auto; display:flex; gap:10px; align-items:flex-end; background:var(--panel);
+    border:1px solid var(--line); border-radius:20px; padding:8px 8px 8px 16px; box-shadow:var(--shadow); }
+  .composer:focus-within { border-color:color-mix(in srgb,var(--accent) 60%,var(--line)); }
+  #q { flex:1; border:0; background:transparent; color:var(--text); resize:none; font:inherit; line-height:1.5;
+    max-height:140px; padding:6px 0; outline:none; }
+  #send { border:0; background:var(--accent); color:#fff; width:34px; height:34px; border-radius:50%; cursor:pointer;
+    font-size:16px; display:grid; place-items:center; flex-shrink:0; transition:.15s; }
+  #send:disabled { opacity:.4; cursor:default; }
+  .hint { max-width:720px; margin:8px auto 0; color:var(--muted); font-size:11.5px; text-align:center; }
+</style>
+</head>
+<body>
+  <aside>
+    <button class="newbtn" id="newChat">＋ Νέα συζήτηση</button>
+    <div class="chats" id="chats"></div>
+    <div class="foot">Τοπικά · Krikri · 15.639 αποφάσεις</div>
+  </aside>
+
+  <div class="col">
+    <header>
+      <span class="dot"></span>
+      <h1>Νομικός βοηθός ΕΑΔΗΣΥ</h1>
+      <span class="sub" id="sub">τοπικά · Krikri</span>
+    </header>
+    <main id="main"><div class="thread" id="thread"></div></main>
+    <footer>
+      <div class="composer">
+        <textarea id="q" rows="1" placeholder="Ρώτησε κάτι στα ελληνικά…" autofocus></textarea>
+        <button id="send" title="Αποστολή (Enter)">↑</button>
+      </div>
+      <div class="hint">Enter για αποστολή · Shift+Enter για νέα γραμμή · η ιστορία αποθηκεύεται</div>
+    </footer>
+  </div>
+
+<script>
+const BRAIN = "http://127.0.0.1:8787";
+const thread = document.getElementById("thread");
+const chatsEl = document.getElementById("chats");
+const q = document.getElementById("q");
+const send = document.getElementById("send");
+let currentChat = null, busy = false;
+
+const api = (p, o) => fetch(BRAIN + p, o).then(r => r.json());
+function esc(s){ return s.replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
+function fmt(s){ return esc(s).replace(/\*\*(.+?)\*\*/g,"<strong>$1</strong>"); }
+function scroll(){ document.getElementById("main").scrollTop = 1e9; }
+
+/* ---------- sidebar ---------- */
+async function loadChats(){
+  const { chats } = await api("/chats");
+  chatsEl.innerHTML = "";
+  chats.forEach(c => {
+    const el = document.createElement("div");
+    el.className = "chat" + (c.id === currentChat ? " active" : "");
+    el.innerHTML = `<span class="t"></span><button class="del" title="Διαγραφή">✕</button>`;
+    el.querySelector(".t").textContent = c.title || "Συζήτηση";
+    el.querySelector(".t").onclick = () => openChat(c.id);
+    el.onclick = e => { if (!e.target.classList.contains("del")) openChat(c.id); };
+    el.querySelector(".del").onclick = e => { e.stopPropagation(); delChat(c.id); };
+    chatsEl.appendChild(el);
+  });
+}
+async function delChat(id){
+  await fetch(`${BRAIN}/chats/${id}`, { method:"DELETE" });
+  if (id === currentChat) newChat();
+  loadChats();
+}
+function newChat(){
+  currentChat = null;
+  localStorage.setItem("lastChat", "");
+  thread.innerHTML = `<div class="empty">
+      <div class="big">Ρώτησε για τις αποφάσεις</div>
+      <div>Προδικαστικές προσφυγές δημοσίων συμβάσεων.</div>
+      <div class="examples">
+        <button class="ex">Τι ισχύει για την εγγυητική επιστολή συμμετοχής;</button>
+        <button class="ex">Πότε απορρίπτεται προσφορά ως ασυνήθιστα χαμηλή;</button>
+        <button class="ex">Μπορεί να συμπληρωθεί το ΕΕΕΣ μετά την υποβολή;</button>
+      </div></div>`;
+  thread.querySelectorAll(".ex").forEach(b => b.onclick = () => { q.value = b.textContent; ask(); });
+  loadChats(); q.focus();
+}
+async function openChat(id){
+  currentChat = id;
+  localStorage.setItem("lastChat", String(id));
+  const { messages } = await api(`/chats/${id}/messages`);
+  thread.innerHTML = "";
+  messages.forEach(m => {
+    if (m.role === "user") addUser(m.content);
+    else { const el = addBot(); el.think.remove(); el.body.classList.remove("cursor");
+      el.body.innerHTML = fmt(m.content); renderSources(el.src, m.sources || []); }
+  });
+  loadChats(); scroll();
+}
+
+/* ---------- messages ---------- */
+function addUser(text){
+  const d = document.createElement("div"); d.className="msg user"; d.textContent=text; thread.appendChild(d);
+}
+function addBot(){
+  const w = document.createElement("div"); w.className="msg bot";
+  w.innerHTML = `<div class="who"><span class="dot"></span> Krikri</div>
+    <div class="answer cursor"></div>
+    <div class="thinking"><span class="d"></span><span class="d"></span><span class="d"></span></div>
+    <div class="sources" style="display:none"></div>`;
+  thread.appendChild(w);
+  return { body:w.querySelector(".answer"), think:w.querySelector(".thinking"), src:w.querySelector(".sources") };
+}
+function renderSources(el, sources){
+  if (!sources || !sources.length) return;
+  el.style.display = "flex";
+  el.innerHTML = `<span class="lbl">Πηγές</span>` + sources.map(s =>
+    `<a class="chip" href="${s.pdf_url}" target="_blank" rel="noopener">${s.number}/${s.year}</a>`).join("");
+}
+
+/* ---------- ask ---------- */
+async function ask(){
+  const text = q.value.trim();
+  if (!text || busy) return;
+  busy = true; send.disabled = true;
+  if (!currentChat) thread.innerHTML = "";  // clear empty state
+  addUser(text);
+  q.value=""; q.style.height="auto";
+  const el = addBot(); scroll();
+  let answer="";
+  try {
+    const url = `${BRAIN}/ask?q=${encodeURIComponent(text)}` + (currentChat ? `&chat_id=${currentChat}` : "");
+    const res = await fetch(url, { headers:{ Accept:"text/event-stream" }});
+    if (!res.ok || !res.body) throw new Error("server " + res.status);
+    const reader = res.body.getReader(); const dec = new TextDecoder(); let buf="";
+    for(;;){
+      const { value, done } = await reader.read(); if (done) break;
+      buf += dec.decode(value,{stream:true});
+      const frames = buf.split("\n\n"); buf = frames.pop() || "";
+      for (const f of frames){
+        const line = f.trim(); if (!line.startsWith("data:")) continue;
+        const ev = JSON.parse(line.slice(5).trim());
+        if (ev.chat_id && !currentChat){ currentChat = ev.chat_id; localStorage.setItem("lastChat", String(ev.chat_id)); }
+        if (ev.t){ el.think.style.display="none"; answer += ev.t; el.body.innerHTML = fmt(answer); scroll(); }
+        else if (ev.error){ el.think.style.display="none"; answer += "\n\n⚠️ " + ev.error; el.body.innerHTML = fmt(answer); }
+        else if (ev.sources){ renderSources(el.src, ev.sources); scroll(); }
+      }
+    }
+  } catch(err){
+    el.think.style.display="none";
+    el.body.innerHTML = `<span style="color:#c0392b">Δεν υπάρχει σύνδεση με τον server (server.py).</span>`;
+  } finally {
+    el.body.classList.remove("cursor");
+    busy=false; send.disabled = !q.value.trim(); q.focus();
+    loadChats();  // refresh titles/order
+  }
+}
+
+/* ---------- wiring ---------- */
+q.addEventListener("input", () => { q.style.height="auto"; q.style.height=Math.min(q.scrollHeight,140)+"px"; send.disabled=!q.value.trim(); });
+q.addEventListener("keydown", e => { if (e.key==="Enter" && !e.shiftKey){ e.preventDefault(); ask(); }});
+send.addEventListener("click", ask);
+document.getElementById("newChat").addEventListener("click", newChat);
+send.disabled = true;
+
+(async function init(){
+  await loadChats();
+  const last = localStorage.getItem("lastChat");
+  const { chats } = await api("/chats");
+  if (last && chats.some(c => String(c.id) === last)) openChat(Number(last));
+  else newChat();
+})();
+</script>
+</body>
+</html>

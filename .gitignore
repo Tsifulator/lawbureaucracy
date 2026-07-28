@@ -1,0 +1,25 @@
+# --- Python ---
+brain/.venv/
+__pycache__/
+*.pyc
+
+# --- Data: huge + PERSONAL (decisions.db, chats.db, downloaded PDFs) ---
+brain/data/
+*.db
+*.db-wal
+*.db-shm
+
+# --- Secrets ---
+.env
+brain/.env
+*.local
+
+# --- Node / Raycast build output ---
+raycast/node_modules/
+raycast/dist/
+
+# --- Throwaway investigation scripts (adjustice reverse-engineering) ---
+brain/probe_*.py
+
+# --- macOS ---
+.DS_Store

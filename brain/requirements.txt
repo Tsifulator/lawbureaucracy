@@ -1,0 +1,4 @@
+# lawbureaucracy brain — deliberately tiny, all pure-Python / wheels (no Rust).
+# Embeddings run on local Ollama (bge-m3); the HTTP server is stdlib only.
+pypdf>=6.0
+numpy>=2.0
