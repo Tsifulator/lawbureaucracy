@@ -74,9 +74,13 @@ ANSWER_ENGINE = os.environ.get("ANSWER_ENGINE", "ollama")
 # Defaults target Groq's free tier. Point these three at any other provider that
 # speaks /chat/completions and nothing else has to change.
 LLM_BASE = os.environ.get("LLM_BASE", "https://api.groq.com/openai/v1")
-LLM_MODEL = os.environ.get("LLM_MODEL", "llama-3.3-70b-versatile")
+# Groq dropped Llama 3.1 8B / 3.3 70B from free + Developer accounts on
+# 2026-08-16. gpt-oss-120b is the strongest Greek writer left on the free tier
+# (checked against qwen3.8-27b, which slips into private-law register:
+# "συμβολαίου" where procurement law says "σύμβασης").
+LLM_MODEL = os.environ.get("LLM_MODEL", "openai/gpt-oss-120b")
 LLM_API_KEY = os.environ.get("LLM_API_KEY", "").strip()
-LLM_LABEL = os.environ.get("LLM_LABEL", "Llama 3.3")  # shown in the UI
+LLM_LABEL = os.environ.get("LLM_LABEL", "GPT-OSS 120B")  # shown in the UI
 ANSWER_MODEL = os.environ.get("ANSWER_MODEL", "krikri")  # Ollama tag for the answer LLM
 REWRITE = os.environ.get("REWRITE", "0") == "1"          # sharpen query before search (off: faster)
 
