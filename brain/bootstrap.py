@@ -57,6 +57,40 @@ def _download(url, dest, gunzip=False):
     return True
 
 
+def repair_numbers():
+    """Re-derive number/year on an index built before decnum.py existed.
+
+    The first published index came from a regex that only matched
+    Apofasi-<digits>-<year>.pdf, so every prefixed decision (Α831/2025
+    suspensions, E11/2021, AA55/2017) was stored with number='' — 4,306 of
+    15,690, and 4,284 of the ~5k actually ingested. A volume that already holds
+    that index never re-downloads it (the fetch above skips files that exist),
+    so the repair has to happen in place. Metadata only, no re-embedding, and
+    idempotent — a corrected index reports "already correct" and moves on.
+    """
+    import sqlite3
+
+    import decnum
+
+    con = sqlite3.connect(config.DB_PATH)
+    try:
+        rows = con.execute("SELECT id, number, year, pdf_url FROM decisions").fetchall()
+        fixes = [
+            (num, yr, did)
+            for did, number, year, url in rows
+            for num, yr in [decnum.from_pdf_url(url)]
+            if num and (num != (number or "") or yr != (year or ""))
+        ]
+        if fixes:
+            con.executemany("UPDATE decisions SET number=?, year=? WHERE id=?", fixes)
+            con.commit()
+            _log(f"repaired {len(fixes)} decision numbers")
+        else:
+            _log("decision numbers already correct")
+    finally:
+        con.close()
+
+
 def ensure_assets():
     ok = True
 
@@ -75,6 +109,11 @@ def ensure_assets():
             ok = False
 
     if ok:
+        try:
+            repair_numbers()
+        except Exception as e:
+            # A label problem must never stop the app from serving search.
+            _log(f"WARNING: number repair failed ({e}) — serving index as-is")
         usage = shutil.disk_usage(config.DATA)
         _log(f"volume: {usage.used / 1e9:.1f} GB used / {usage.total / 1e9:.1f} GB total")
     return ok
