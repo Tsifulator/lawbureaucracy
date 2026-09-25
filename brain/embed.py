@@ -82,6 +82,37 @@ def _embed_onnx(text: str) -> list[float]:
     return vec.tolist()
 
 
+def embed_batch(texts: list[str], model: str = EMBED_MODEL) -> list[list[float]]:
+    """Embed many texts in one call. ~8x faster than looping embed() on Ollama,
+    which matters when ingesting 15k PDFs (~12 chunks each).
+
+    Ollama's newer /api/embed takes an array; verified identical to the legacy
+    single-shot /api/embeddings (cosine 1.000000 on Greek legal text), so
+    batched and previously-stored vectors share one space and can be mixed.
+    ONNX has no batched path here and falls back to a loop — the cloud only
+    ever embeds one query at a time, so it gains nothing from batching.
+    """
+    if not texts:
+        return []
+    if EMBED_BACKEND == "onnx":
+        return [_embed_onnx(t) for t in texts]
+
+    body = json.dumps({"model": model, "input": texts}).encode()
+    req = urllib.request.Request(
+        f"{OLLAMA_URL}/api/embed", data=body,
+        headers={"Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=300) as r:
+            out = json.loads(r.read()).get("embeddings")
+        if out and len(out) == len(texts):
+            return out
+    except (urllib.error.URLError, TimeoutError, ValueError):
+        pass
+    # Older Ollama, or a partial reply -> one-at-a-time still works.
+    return [_embed_ollama(t, model=model) for t in texts]
+
+
 def warmup():
     """Pay the ONNX load cost at boot instead of on the first user's query."""
     if EMBED_BACKEND == "onnx":

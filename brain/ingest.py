@@ -21,10 +21,11 @@ from config import (
     PDF_DIR, DATA, USER_AGENT, CHUNK_CHARS, CHUNK_OVERLAP, MIN_TEXT_CHARS,
     HOST, PORT,
 )
-from embed import embed
+from embed import embed, embed_batch
 
 LOCK_PATH = DATA / "ingest.lock"
 RELOAD_EVERY = 100  # tell the running server to refresh its index this often
+EMBED_BATCH = 64    # chunks per Ollama /api/embed call
 
 
 def _now():
@@ -40,14 +41,34 @@ def reload_server():
         pass  # server may not be running; that's fine
 
 
-def download_pdf(url, dest):
-    if dest.exists() and dest.stat().st_size > 0:
-        return dest
+def _fetch(url):
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     with urllib.request.urlopen(req, timeout=90) as r:
-        data = r.read()
-    dest.write_bytes(data)
-    return dest
+        return r.read()
+
+
+def download_pdf(url, dest):
+    """Fetch a decision PDF, falling back to ΕΑΔΗΣΥ when the listed host is dead.
+
+    The table still links older decisions to www.aepp-procurement.gr — the
+    predecessor authority — and every one of those now 404s. ΕΑΔΗΣΥ serves the
+    same filenames, which is what rescues ~10.7k decisions that were all sitting
+    in status='error'.
+    """
+    if dest.exists() and dest.stat().st_size > 0:
+        return dest
+    filename = url.rsplit("/", 1)[-1]
+    candidates = [url]
+    if "eadhsy.gr" not in url:
+        candidates.append(f"https://eadhsy.gr/pdf/apofaseis/{filename}")
+    last = None
+    for candidate in candidates:
+        try:
+            dest.write_bytes(_fetch(candidate))
+            return dest
+        except Exception as e:
+            last = e
+    raise last
 
 
 def extract_pages(pdf_bytes):
@@ -91,7 +112,11 @@ def select_decisions(con, args):
 
 
 def ingest_one(con, d):
-    pdf_path = PDF_DIR / f"Apofasi-{d['number']}-{d['year']}.pdf"
+    # Name the file after the URL, never rebuild it from number/year. When the
+    # number was blank (every prefixed decision, pre-decnum) that template
+    # collapsed to "Apofasi--.pdf" for ALL of them: the first download won, and
+    # 4,284 decisions were then embedded with one unrelated decision's text.
+    pdf_path = PDF_DIR / d["pdf_url"].rsplit("/", 1)[-1]
     try:
         download_pdf(d["pdf_url"], pdf_path)
         pdf_bytes = pdf_path.read_bytes()
@@ -102,14 +127,20 @@ def ingest_one(con, d):
 
     # gather text per page, chunk, embed
     total_chars = 0
-    idx = 0
     con.execute("DELETE FROM chunks WHERE decision_id=?", (d["id"],))  # idempotent re-ingest
+
+    pending = []  # (page_no, chunk) gathered first, then embedded in one call
     for page_no, page_text in extract_pages(pdf_bytes):
         total_chars += len(page_text)
         for chunk in chunk_text(page_text):
-            if len(chunk.strip()) < 40:
-                continue
-            vec = embed(chunk)
+            if len(chunk.strip()) >= 40:
+                pending.append((page_no, chunk))
+
+    idx = 0
+    for start in range(0, len(pending), EMBED_BATCH):
+        batch = pending[start:start + EMBED_BATCH]
+        vecs = embed_batch([c for _, c in batch])
+        for (page_no, chunk), vec in zip(batch, vecs):
             db.add_chunk(con, d["id"], idx, page_no, chunk, vec)
             idx += 1
 
@@ -157,7 +188,7 @@ def run(args):
             if n % RELOAD_EVERY == 0:
                 reload_server()  # make progress searchable during long backfills
                 print(f"  … reloaded server index at {n}/{len(todo)}")
-            time.sleep(0.3)  # be polite to the server
+            time.sleep(0.15)  # be polite to the server
         con.close()
         reload_server()
         print("INGEST DONE")
