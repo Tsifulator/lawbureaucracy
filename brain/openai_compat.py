@@ -20,6 +20,11 @@ class LLMError(RuntimeError):
 
 NAME = LLM_LABEL
 
+# Groq (and several other providers) sit behind Cloudflare, which 403s the
+# default "Python-urllib/3.x" signature with error 1010. Any honest User-Agent
+# gets through — this is not evasion, just identifying the client properly.
+UA = "lawbureaucracy/1.0 (+https://github.com/Tsifulator/lawbureaucracy)"
+
 
 def available() -> bool:
     return bool(LLM_API_KEY)
@@ -38,6 +43,7 @@ def _request(payload: dict, timeout: int):
         headers={
             "Content-Type": "application/json",
             "Authorization": f"Bearer {LLM_API_KEY}",
+            "User-Agent": UA,
         },
     )
     try:

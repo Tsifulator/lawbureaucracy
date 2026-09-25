@@ -10,6 +10,9 @@ import urllib.error
 from config import GEMINI_API_KEY, GEMINI_MODEL, GEMINI_BASE
 
 
+UA = "lawbureaucracy/1.0 (+https://github.com/Tsifulator/lawbureaucracy)"
+
+
 class GeminiError(RuntimeError):
     pass
 
@@ -46,7 +49,7 @@ def rewrite_query(q: str, timeout: int = 12) -> str:
     }).encode()
     req = urllib.request.Request(
         _endpoint("generateContent"), data=body,
-        headers={"Content-Type": "application/json"},
+        headers={"Content-Type": "application/json", "User-Agent": UA},
     )
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
@@ -75,7 +78,7 @@ def contextualize(question: str, history: list[dict], timeout: int = 20) -> str:
         "generationConfig": {"temperature": 0.0, "maxOutputTokens": 60},
     }).encode()
     req = urllib.request.Request(_endpoint("generateContent"), data=body,
-                                 headers={"Content-Type": "application/json"})
+                                 headers={"Content-Type": "application/json", "User-Agent": UA})
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
             j = json.loads(r.read())
@@ -93,7 +96,7 @@ def stream_answer(prompt: str, timeout: int = 300):
         "generationConfig": {"temperature": 0.2, "maxOutputTokens": 2048},
     }).encode()
     url = _endpoint("streamGenerateContent") + "&alt=sse"
-    req = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json"})
+    req = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json", "User-Agent": UA})
     try:
         resp = urllib.request.urlopen(req, timeout=timeout)
     except urllib.error.HTTPError as e:
