@@ -38,6 +38,11 @@
     font-size:14px; padding:2px 4px; border-radius:6px; }
   .chat:hover .del { opacity:.7; } .chat .del:hover { opacity:1; color:#e0533d; background:var(--bg); }
   aside .foot { padding:12px 16px; border-top:1px solid var(--line); color:var(--muted); font-size:11.5px; }
+  .userbar { display:flex; align-items:center; gap:8px; padding:10px 12px; border-top:1px solid var(--line); }
+  .userbar .u { flex:1; font-size:13px; font-weight:550; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .userbar .logout { border:1px solid var(--line); background:var(--panel); color:var(--muted); cursor:pointer;
+    border-radius:8px; padding:4px 9px; font:inherit; font-size:12px; transition:.15s; }
+  .userbar .logout:hover { border-color:var(--accent); color:var(--accent); }
 
   /* ---------- main ---------- */
   .col { flex:1; display:flex; flex-direction:column; min-width:0; }
@@ -93,14 +98,15 @@
   <aside>
     <button class="newbtn" id="newChat">＋ Νέα συζήτηση</button>
     <div class="chats" id="chats"></div>
-    <div class="foot">Τοπικά · Krikri · 15.639 αποφάσεις</div>
+    <div class="userbar" id="userbar" style="display:none"></div>
+    <div class="foot" id="foot">…</div>
   </aside>
 
   <div class="col">
     <header>
       <span class="dot"></span>
       <h1>Νομικός βοηθός ΕΑΔΗΣΥ</h1>
-      <span class="sub" id="sub">τοπικά · Krikri</span>
+      <span class="sub" id="sub">…</span>
     </header>
     <main id="main"><div class="thread" id="thread"></div></main>
     <footer>
@@ -113,14 +119,33 @@
   </div>
 
 <script>
-const BRAIN = "http://127.0.0.1:8787";
+// Served by the brain itself, so same-origin. Override with ?brain=http://host:port
+// if you ever want to point a local page at a remote index.
+const BRAIN = new URLSearchParams(location.search).get("brain")
+  || (location.protocol.startsWith("http") ? "" : "http://127.0.0.1:8787");
 const thread = document.getElementById("thread");
 const chatsEl = document.getElementById("chats");
 const q = document.getElementById("q");
 const send = document.getElementById("send");
 let currentChat = null, busy = false;
 
-const api = (p, o) => fetch(BRAIN + p, o).then(r => r.json());
+/* Per-browser id so visitors don't share one global chat history. */
+const CLIENT_ID = (() => {
+  let id = localStorage.getItem("clientId");
+  if (!id) {
+    id = (crypto.randomUUID ? crypto.randomUUID()
+                            : String(Math.random()).slice(2) + Date.now().toString(36));
+    localStorage.setItem("clientId", id);
+  }
+  return id;
+})();
+const withId = (o = {}) => ({ ...o, headers: { ...(o.headers || {}), "X-Client-Id": CLIENT_ID } });
+
+/* What's actually answering, per /health — never hardcode "Krikri": the hosted
+   build has no LLM, and claiming one makes it look crashed. */
+let ENGINE_LABEL = "Αναζήτηση";
+
+const api = (p, o) => fetch(BRAIN + p, withId(o)).then(r => r.json());
 function esc(s){ return s.replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
 function fmt(s){ return esc(s).replace(/\*\*(.+?)\*\*/g,"<strong>$1</strong>"); }
 function scroll(){ document.getElementById("main").scrollTop = 1e9; }
@@ -141,7 +166,7 @@ async function loadChats(){
   });
 }
 async function delChat(id){
-  await fetch(`${BRAIN}/chats/${id}`, { method:"DELETE" });
+  await fetch(`${BRAIN}/chats/${id}`, withId({ method:"DELETE" }));
   if (id === currentChat) newChat();
   loadChats();
 }
@@ -178,7 +203,7 @@ function addUser(text){
 }
 function addBot(){
   const w = document.createElement("div"); w.className="msg bot";
-  w.innerHTML = `<div class="who"><span class="dot"></span> Krikri</div>
+  w.innerHTML = `<div class="who"><span class="dot"></span> ${esc(ENGINE_LABEL)}</div>
     <div class="answer cursor"></div>
     <div class="thinking"><span class="d"></span><span class="d"></span><span class="d"></span></div>
     <div class="sources" style="display:none"></div>`;
@@ -204,7 +229,7 @@ async function ask(){
   let answer="";
   try {
     const url = `${BRAIN}/ask?q=${encodeURIComponent(text)}` + (currentChat ? `&chat_id=${currentChat}` : "");
-    const res = await fetch(url, { headers:{ Accept:"text/event-stream" }});
+    const res = await fetch(url, withId({ headers:{ Accept:"text/event-stream" }}));
     if (!res.ok || !res.body) throw new Error("server " + res.status);
     const reader = res.body.getReader(); const dec = new TextDecoder(); let buf="";
     for(;;){
@@ -237,7 +262,38 @@ send.addEventListener("click", ask);
 document.getElementById("newChat").addEventListener("click", newChat);
 send.disabled = true;
 
+/* ---------- tell the user what this build actually is ---------- */
+async function loadHealth(){
+  const gr = n => n.toLocaleString("el-GR");
+  try {
+    const h = await api("/health");
+    // answers_ready, not just the engine name — a configured engine with no
+    // API key writes nothing, and claiming otherwise looks like a crash.
+    const hasLLM = h.answer_engine && h.answer_engine !== "none" && h.answers_ready;
+    ENGINE_LABEL = hasLLM ? (h.engine_label || h.answer_engine) : "Αναζήτηση";
+    const where = h.embed_backend === "onnx" ? "online" : "τοπικά";
+    document.getElementById("sub").textContent =
+      hasLLM ? `${where} · ${ENGINE_LABEL}` : `${where} · αναζήτηση αποφάσεων`;
+    document.getElementById("foot").textContent =
+      `${hasLLM ? ENGINE_LABEL : "Αναζήτηση"} · ${gr(h.decisions)} αποφάσεις`;
+    const ub = document.getElementById("userbar");
+    if (h.user) {
+      ub.style.display = "flex";
+      ub.innerHTML = `<span class="u">👤 ${esc(h.user)}</span><button class="logout">Αποσύνδεση</button>`;
+      ub.querySelector(".logout").onclick = async () => {
+        await fetch(BRAIN + "/logout", { method: "POST" });
+        localStorage.removeItem("lastChat");
+        location.reload();
+      };
+    }
+  } catch {
+    document.getElementById("sub").textContent = "χωρίς σύνδεση";
+    document.getElementById("foot").textContent = "χωρίς σύνδεση";
+  }
+}
+
 (async function init(){
+  await loadHealth();
   await loadChats();
   const last = localStorage.getItem("lastChat");
   const { chats } = await api("/chats");

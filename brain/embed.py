@@ -1,12 +1,27 @@
-"""Embeddings via local Ollama (bge-m3, 1024-dim, strong multilingual/Greek)."""
+"""Query/document embeddings — bge-m3, 1024-dim (strong multilingual/Greek).
+
+Two interchangeable backends, both producing vectors in the SAME space:
+
+  'ollama' (default) — local Ollama. What ingest.py always uses to build the index.
+  'onnx'             — bundled bge-m3 fp16 ONNX, for hosts with no Ollama (the
+                       cloud deploy). CLS pooling + L2 norm, same as bge-m3 dense.
+
+Verified equivalent on the real 62k-chunk corpus: mean query-vector cosine 1.0000
+and 100% top-8 overlap vs Ollama across 8 Greek legal queries. (int8 quantization
+was measurably worse — 0.986 / 89% — so this deliberately uses fp16.)
+"""
 import json
 import time
 import urllib.request
 import urllib.error
-from config import OLLAMA_URL, EMBED_MODEL
+
+from config import OLLAMA_URL, EMBED_MODEL, EMBED_BACKEND
 
 
-def embed(text: str, model: str = EMBED_MODEL, retries: int = 3) -> list[float]:
+# --------------------------------------------------------------------------
+# ollama backend
+# --------------------------------------------------------------------------
+def _embed_ollama(text: str, model: str = EMBED_MODEL, retries: int = 3) -> list[float]:
     body = json.dumps({"model": model, "prompt": text}).encode()
     req = urllib.request.Request(
         f"{OLLAMA_URL}/api/embeddings",
@@ -22,3 +37,58 @@ def embed(text: str, model: str = EMBED_MODEL, retries: int = 3) -> list[float]:
             last = e
             time.sleep(1.5 * (attempt + 1))
     raise RuntimeError(f"Ollama embed failed after {retries} tries: {last}")
+
+
+# --------------------------------------------------------------------------
+# onnx backend (lazy — heavy imports only when actually selected)
+# --------------------------------------------------------------------------
+_SESSION = None
+_TOKENIZER = None
+_INPUT_NAMES = None
+
+
+def _onnx_load():
+    global _SESSION, _TOKENIZER, _INPUT_NAMES
+    if _SESSION is not None:
+        return
+    import onnxruntime as ort
+    from tokenizers import Tokenizer
+    from config import ONNX_MODEL_PATH, ONNX_TOKENIZER_PATH
+
+    opts = ort.SessionOptions()
+    opts.intra_op_num_threads = 2  # small boxes: don't oversubscribe
+    _SESSION = ort.InferenceSession(
+        str(ONNX_MODEL_PATH), sess_options=opts, providers=["CPUExecutionProvider"]
+    )
+    _INPUT_NAMES = {i.name for i in _SESSION.get_inputs()}
+    _TOKENIZER = Tokenizer.from_file(str(ONNX_TOKENIZER_PATH))
+    _TOKENIZER.enable_truncation(max_length=512)
+
+
+def _embed_onnx(text: str) -> list[float]:
+    import numpy as np
+
+    _onnx_load()
+    enc = _TOKENIZER.encode(text)
+    feed = {
+        "input_ids": np.asarray([enc.ids], dtype=np.int64),
+        "attention_mask": np.asarray([enc.attention_mask], dtype=np.int64),
+    }
+    feed = {k: v for k, v in feed.items() if k in _INPUT_NAMES}
+    out = _SESSION.run(None, feed)[0]
+    vec = out[0, 0] if out.ndim == 3 else out[0]  # CLS token = bge-m3 dense
+    vec = np.asarray(vec, dtype=np.float32)
+    vec /= np.linalg.norm(vec) or 1.0
+    return vec.tolist()
+
+
+def warmup():
+    """Pay the ONNX load cost at boot instead of on the first user's query."""
+    if EMBED_BACKEND == "onnx":
+        _embed_onnx("προθέρμανση")
+
+
+def embed(text: str, model: str = EMBED_MODEL, retries: int = 3) -> list[float]:
+    if EMBED_BACKEND == "onnx":
+        return _embed_onnx(text)
+    return _embed_ollama(text, model=model, retries=retries)

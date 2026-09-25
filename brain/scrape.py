@@ -12,13 +12,14 @@ import urllib.request
 from datetime import datetime, timezone
 
 import db
+import decnum
 from config import APOFASEIS_PAGE, AJAX_URL, USER_AGENT
 
 PAGE = 500  # rows per request
 NONCE_RE = re.compile(r'id="wdtNonceFrontendServerSide_5"[^>]*value="([^"]+)"')
 PDF_RE = re.compile(r"href='([^']+\.pdf[^']*)'", re.I)
-# PDF filenames look like Apofasi-1614-2025.pdf -> (number, year)
-NUMYEAR_RE = re.compile(r"Apofasi[-_](\d+)[-_](\d+)\.pdf", re.I)
+# Number/year parsing lives in decnum.py — it has to cope with the prefixed
+# forms (Apofasi-A831-2025.pdf) that this regex used to drop on the floor.
 
 
 def _now():
@@ -75,10 +76,7 @@ def parse_row(row):
     if not mpdf:
         return None
     pdf_url = mpdf.group(1)
-    num, year = "", ""
-    mny = NUMYEAR_RE.search(pdf_url)
-    if mny:
-        num, year = mny.group(1), mny.group(2)
+    num, year = decnum.from_pdf_url(pdf_url)
     # dtype = first cell that looks like a Greek all-caps status word
     dtype = ""
     for c in cells:

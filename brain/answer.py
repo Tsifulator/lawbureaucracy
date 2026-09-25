@@ -1,8 +1,10 @@
 """RAG orchestration: retrieve (bge-m3) -> grounded prompt -> stream the answer.
 
 The answer engine is swappable via config.ANSWER_ENGINE:
-  'ollama' -> local Llama-Krikri (Greek-native, free)   [default]
-  'gemini' -> cloud Gemini Flash
+  'ollama'        -> local Llama-Krikri (Greek-native, free)   [default]
+  'openai_compat' -> any OpenAI-style API (Groq/OpenRouter/Together/…)
+  'gemini'        -> cloud Gemini Flash
+  'none'          -> search-only, no LLM
 Both engines expose the same interface (available / unavailable_msg /
 rewrite_query / stream_answer), so this file doesn't care which is used.
 
@@ -16,6 +18,10 @@ import config
 
 if config.ANSWER_ENGINE == "gemini":
     import gemini as engine
+elif config.ANSWER_ENGINE == "openai_compat":
+    import openai_compat as engine
+elif config.ANSWER_ENGINE == "none":
+    import none_gen as engine
 else:
     import ollama_gen as engine
 
@@ -64,7 +70,7 @@ def _dedupe_sources(chunks: list[dict]) -> list[dict]:
     return sources
 
 
-def answer_stream(index, question: str, k: int = 5, history: list[dict] | None = None):
+def answer_stream(index, question: str, k: int = 10, history: list[dict] | None = None):
     have_engine = engine.available()
 
     # 1) figure out what to actually search for, then retrieve chunks:

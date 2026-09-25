@@ -1,0 +1,17 @@
+# Keep the build context tiny — `railway up` uploads whatever isn't listed here,
+# and brain/data alone is ~800 MB (index + 15.6k downloaded PDFs).
+brain/data/
+brain/.venv/
+brain/.env
+**/__pycache__/
+*.pyc
+*.db
+*.db-wal
+*.db-shm
+*.onnx
+
+raycast/node_modules/
+raycast/dist/
+launchd/
+.git/
+.DS_Store
