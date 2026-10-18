@@ -52,7 +52,7 @@ def rewrite_query(q: str, timeout: int = 12) -> str:
     )
     body = json.dumps({
         "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-        "generationConfig": {"temperature": 0.0, "maxOutputTokens": 60},
+        "generationConfig": {"temperature": 0.0, "maxOutputTokens": 1024},
     }).encode()
     req = urllib.request.Request(
         _endpoint("generateContent"), data=body,
@@ -82,7 +82,7 @@ def contextualize(question: str, history: list[dict], timeout: int = 20) -> str:
     )
     body = json.dumps({
         "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-        "generationConfig": {"temperature": 0.0, "maxOutputTokens": 60},
+        "generationConfig": {"temperature": 0.0, "maxOutputTokens": 1024},
     }).encode()
     req = urllib.request.Request(_endpoint("generateContent"), data=body,
                                  headers=_headers())
@@ -100,7 +100,7 @@ def stream_answer(prompt: str, timeout: int = 300):
         raise GeminiError("GEMINI_API_KEY not set")
     body = json.dumps({
         "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-        "generationConfig": {"temperature": 0.2, "maxOutputTokens": 2048},
+        "generationConfig": {"temperature": 0.2, "maxOutputTokens": 8192},
     }).encode()
     url = _endpoint("streamGenerateContent") + "?alt=sse"
     req = urllib.request.Request(url, data=body, headers=_headers())
