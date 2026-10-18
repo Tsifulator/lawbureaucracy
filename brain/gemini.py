@@ -31,7 +31,14 @@ def unavailable_msg() -> str:
 
 
 def _endpoint(method: str) -> str:
-    return f"{GEMINI_BASE}/models/{GEMINI_MODEL}:{method}?key={GEMINI_API_KEY}"
+    return f"{GEMINI_BASE}/models/{GEMINI_MODEL}:{method}"
+
+
+def _headers() -> dict:
+    # Key goes in a header (works with both AIza… and newer AQ.… keys,
+    # and keeps it out of URLs/logs).
+    return {"Content-Type": "application/json", "User-Agent": UA,
+            "x-goog-api-key": GEMINI_API_KEY}
 
 
 def rewrite_query(q: str, timeout: int = 12) -> str:
@@ -49,7 +56,7 @@ def rewrite_query(q: str, timeout: int = 12) -> str:
     }).encode()
     req = urllib.request.Request(
         _endpoint("generateContent"), data=body,
-        headers={"Content-Type": "application/json", "User-Agent": UA},
+        headers=_headers(),
     )
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
@@ -78,7 +85,7 @@ def contextualize(question: str, history: list[dict], timeout: int = 20) -> str:
         "generationConfig": {"temperature": 0.0, "maxOutputTokens": 60},
     }).encode()
     req = urllib.request.Request(_endpoint("generateContent"), data=body,
-                                 headers={"Content-Type": "application/json", "User-Agent": UA})
+                                 headers=_headers())
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
             j = json.loads(r.read())
@@ -95,8 +102,8 @@ def stream_answer(prompt: str, timeout: int = 300):
         "contents": [{"role": "user", "parts": [{"text": prompt}]}],
         "generationConfig": {"temperature": 0.2, "maxOutputTokens": 2048},
     }).encode()
-    url = _endpoint("streamGenerateContent") + "&alt=sse"
-    req = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json", "User-Agent": UA})
+    url = _endpoint("streamGenerateContent") + "?alt=sse"
+    req = urllib.request.Request(url, data=body, headers=_headers())
     try:
         resp = urllib.request.urlopen(req, timeout=timeout)
     except urllib.error.HTTPError as e:
