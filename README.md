@@ -105,6 +105,34 @@ token-by-token** (markdown) with the source decisions cited and clickable.
 No engine ready? Ask mode still shows the matched decisions with a note on how to
 enable answers.
 
+## More sources: laws, EU directives, guidance, other courts
+
+`brain/sources.py` adds legislation and other material next to the ΕΑΔΗΣΥ
+decisions, each split so that it can be cited exactly:
+
+| Source | Split into | Citation label |
+|---|---|---|
+| EU procurement & remedies directives (EUR-Lex, Greek) | articles + annexes | `Οδηγία 2014/24/ΕΕ, άρθρο 57` |
+| ν. 4412/2016, ν. 4782/2021 (consolidated text) | articles | `ν. 4412/2016, άρθρο 72` |
+| ΕΑΔΗΣΥ guidance & standard documents (crawled) | documents (per page) | `ΕΑΔΗΣΥ — Κατευθυντήρια Οδηγία 25` |
+| Ελεγκτικό Συνέδριο / ΣτΕ (crawled, if published as files) | decisions | `ΕλΣυν 123/2024`, `ΣτΕ 1234/2023` |
+
+```bash
+cd brain
+python sources.py probe   # what each source yields — stores nothing
+python sources.py run     # fetch + split + embed (resumable, skips unchanged)
+python sources.py list    # documents per source
+```
+
+Configure sources in `brain/sources.json` (a law can point at a `url` or a
+local `file`; otherwise a consolidated text is looked for on the ΕΑΔΗΣΥ site).
+The crawler honours robots.txt and waits 1 s between requests.
+
+Retrieval keeps separate slots per group (decisions / law / guidance / courts)
+so a 400-article law is never drowned out by 660k decision chunks, and the
+answer prompt requires a `[label]` citation for every claim; the web UI turns
+those labels into links to the source.
+
 ## How search works
 1. Your query is embedded with **bge-m3** (same model as the documents).
 2. Cosine similarity against every text chunk (numpy matmul — instant at this scale).

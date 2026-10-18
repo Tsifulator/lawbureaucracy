@@ -97,7 +97,9 @@ def chunk_text(text, size=CHUNK_CHARS, overlap=CHUNK_OVERLAP):
 
 
 def select_decisions(con, args):
-    q = "SELECT * FROM decisions WHERE status IN ('new','error')"
+    # Only ΕΑΔΗΣΥ decisions: laws/guidance/other courts are ingested by sources.py.
+    q = ("SELECT * FROM decisions WHERE status IN ('new','error') "
+         "AND (source IS NULL OR source = 'eadhsy')")
     params = []
     if args.year:
         q += " AND year = ?"

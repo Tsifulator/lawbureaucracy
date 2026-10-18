@@ -56,7 +56,10 @@ def _onnx_load():
     from config import ONNX_MODEL_PATH, ONNX_TOKENIZER_PATH
 
     opts = ort.SessionOptions()
-    opts.intra_op_num_threads = 2  # small boxes: don't oversubscribe
+    # small boxes: don't oversubscribe (the server uses 2; a one-off bulk
+    # import can set ONNX_THREADS=4 to use the whole Pi)
+    import os
+    opts.intra_op_num_threads = int(os.environ.get("ONNX_THREADS", "2"))
     _SESSION = ort.InferenceSession(
         str(ONNX_MODEL_PATH), sess_options=opts, providers=["CPUExecutionProvider"]
     )

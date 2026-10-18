@@ -77,6 +77,16 @@ def get_index(rebuild=False):
     return INDEX
 
 
+def _group_counts(idx):
+    """Documents per retrieval group, for the footer ("812 άρθρα νόμων" etc.)."""
+    import db
+    out = {}
+    for m in idx.meta.values():
+        g = db.group_of(m.get("source"))
+        out[g] = out.get(g, 0) + 1
+    return out
+
+
 def _engine_label():
     """Display name for whatever is actually answering, so the UI never has to
     hardcode a model name (it once claimed 'Krikri' on a box with no LLM)."""
@@ -270,7 +280,9 @@ class Handler(BaseHTTPRequestHandler):
             return self._send({
                 "ok": True,
                 "chunks": idx.n_chunks,
-                "decisions": len(idx.meta),
+                "decisions": sum(1 for m in idx.meta.values()
+                                 if (m.get("source") or "eadhsy") == "eadhsy"),
+                "by_group": _group_counts(idx),
                 "embed_backend": config.EMBED_BACKEND,
                 "answer_engine": config.ANSWER_ENGINE,
                 "engine_label": _engine_label(),
@@ -399,7 +411,7 @@ def main():
     print("loading index…", flush=True)
     idx = get_index()
     con = chatdb.connect(); chatdb.init(con); con.close()
-    print(f"index ready: {idx.n_chunks} chunks / {len(idx.meta)} decisions", flush=True)
+    print(f"index ready: {idx.n_chunks} chunks / {len(idx.meta)} documents {_group_counts(idx)}", flush=True)
 
     # pay the ONNX model load now, not on the first visitor's query
     embed.warmup()

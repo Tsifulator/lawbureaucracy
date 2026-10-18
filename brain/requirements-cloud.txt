@@ -3,3 +3,4 @@
 numpy>=2.0
 onnxruntime>=1.22
 tokenizers>=0.21
+pypdf>=6.0  # sources.py: law / guidance PDFs

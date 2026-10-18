@@ -26,21 +26,43 @@ else:
     import ollama_gen as engine
 
 SYSTEM = (
-    "Είσαι νομικός βοηθός για τις αποφάσεις προδικαστικών προσφυγών της ΕΑΔΗΣΥ "
-    "(δημόσιες συμβάσεις). Απάντησε στα ελληνικά, με σαφήνεια και ακρίβεια. "
-    "Χρησιμοποίησε ΜΟΝΟ τα παρακάτω αποσπάσματα αποφάσεων. Παρέθεσε τις αποφάσεις "
-    "που επικαλείσαι στη μορφή [αριθμός/έτος]. Αν τα αποσπάσματα δεν αρκούν για "
-    "να απαντηθεί η ερώτηση, πες το ρητά αντί να μαντέψεις."
+    "Είσαι νομικός βοηθός για το δίκαιο των δημοσίων συμβάσεων στην Ελλάδα. "
+    "Απάντησε στα ελληνικά, με σαφήνεια, ακρίβεια και επαρκές βάθος.\n"
+    "Πηγές: σου δίνονται αποσπάσματα από νομοθεσία (ελληνική και ενωσιακή), "
+    "κατευθυντήριες οδηγίες και αποφάσεις (ΕΑΔΗΣΥ και δικαστηρίων). Κάθε απόσπασμα "
+    "ξεκινά με την ετικέτα παραπομπής του σε αγκύλες, π.χ. [ν. 4412/2016, άρθρο 72] ή [1617/2025].\n"
+    "Κανόνες:\n"
+    "1. ΚΑΘΕ ουσιαστικός ισχυρισμός συνοδεύεται από παραπομπή με την ΑΚΡΙΒΗ ετικέτα "
+    "του αποσπάσματος σε αγκύλες. Μην επινοείς ετικέτες, αριθμούς άρθρων ή αποφάσεων.\n"
+    "2. Ξεκίνα από τον κανόνα δικαίου (νόμος/οδηγία) όπου υπάρχει και μετά δείξε πώς "
+    "τον εφαρμόζουν οι αποφάσεις.\n"
+    "3. Αν χρησιμοποιήσεις κάτι που ΔΕΝ υπάρχει στα αποσπάσματα (γενική γνώση), "
+    "σημείωσέ το ρητά με «(γενική γνώση — χωρίς πηγή στη βάση)».\n"
+    "4. Αν τα αποσπάσματα δεν αρκούν, πες ακριβώς τι λείπει αντί να μαντέψεις.\n"
+    "5. Οι κατευθυντήριες οδηγίες δεν είναι δεσμευτικές όπως ο νόμος· οι αποφάσεις "
+    "ΕΑΔΗΣΥ κρίνουν συγκεκριμένες υποθέσεις — πες το όπου έχει σημασία."
 )
+
+_GROUP_LABEL = {"law": "νομοθεσία", "guidance": "κατευθυντήρια οδηγία",
+                "court": "απόφαση δικαστηρίου", "decision": "απόφαση ΕΑΔΗΣΥ"}
 
 
 def build_prompt(question: str, chunks: list[dict], history: list[dict] | None = None) -> str:
     blocks = []
-    for c in chunks:
-        tag = f"{c.get('number')}/{c.get('year')}"
-        text = (c.get("text", "") or "")[:1200]  # cap per-chunk for faster first token
-        blocks.append(f"[{tag}] ({c.get('type','')})\n{text}")
-    context = "\n\n---\n\n".join(blocks) if blocks else "(καμία σχετική απόφαση)"
+    # legislation first, then guidance, then case law: mirrors how a lawyer reads
+    order = {"law": 0, "guidance": 1, "court": 2, "decision": 3}
+    for c in sorted(chunks, key=lambda c: order.get(c.get("group"), 4)):
+        tag = c.get("cite") or f"{c.get('number')}/{c.get('year')}"
+        kind = _GROUP_LABEL.get(c.get("group"), "")
+        extra = f" — {c['type']}" if c.get("group") == "decision" and c.get("type") else ""
+        text = c.get("text", "") or ""
+        if text.startswith(f"[{tag}]"):  # sources.py chunks carry their label already
+            text = text.split("\n", 1)[1] if "\n" in text else ""
+            if c.get("title"):
+                kind += f": {c['title'].split(' — ', 1)[-1]}"
+        text = text[:1200]  # cap per-chunk for faster first token
+        blocks.append(f"[{tag}] ({kind}{extra})\n{text}")
+    context = "\n\n---\n\n".join(blocks) if blocks else "(κανένα σχετικό απόσπασμα)"
 
     hist = ""
     if history:
@@ -53,7 +75,7 @@ def build_prompt(question: str, chunks: list[dict], history: list[dict] | None =
     return (
         f"{SYSTEM}\n\n"
         f"{hist}"
-        f"=== ΑΠΟΣΠΑΣΜΑΤΑ ΑΠΟΦΑΣΕΩΝ ===\n{context}\n\n"
+        f"=== ΑΠΟΣΠΑΣΜΑΤΑ ΠΗΓΩΝ ===\n{context}\n\n"
         f"=== ΕΡΩΤΗΣΗ ===\n{question}\n\n=== ΑΠΑΝΤΗΣΗ ==="
     )
 
@@ -61,16 +83,19 @@ def build_prompt(question: str, chunks: list[dict], history: list[dict] | None =
 def _dedupe_sources(chunks: list[dict]) -> list[dict]:
     seen, sources = set(), []
     for c in chunks:
-        key = (c.get("number"), c.get("year"))
+        key = c.get("doc_id") or (c.get("number"), c.get("year"))
         if key in seen:
             continue
         seen.add(key)
-        sources.append({"number": c["number"], "year": c["year"], "type": c["type"],
-                        "pdf_url": c["pdf_url"], "title": c["title"]})
-    return sources
+        sources.append({"number": c.get("number"), "year": c.get("year"), "type": c.get("type"),
+                        "pdf_url": c.get("pdf_url"), "title": c.get("title"),
+                        "cite": c.get("cite"), "group": c.get("group")})
+    # same order as the prompt: law, guidance, courts, ΕΑΔΗΣΥ
+    order = {"law": 0, "guidance": 1, "court": 2, "decision": 3}
+    return sorted(sources, key=lambda s: order.get(s.get("group"), 4))
 
 
-def answer_stream(index, question: str, k: int = 10, history: list[dict] | None = None):
+def answer_stream(index, question: str, k: int = 8, history: list[dict] | None = None):
     have_engine = engine.available()
 
     # 1) figure out what to actually search for, then retrieve chunks:

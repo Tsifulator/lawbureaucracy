@@ -69,6 +69,8 @@
   .msg.bot .who { display:flex; align-items:center; gap:8px; color:var(--muted); font-size:12px; margin-bottom:8px; }
   .answer { white-space:pre-wrap; word-wrap:break-word; }
   .answer strong { font-weight:650; }
+  .answer a.cite { color:var(--accent); text-decoration:none; }
+  .answer a.cite:hover { text-decoration:underline; }
   .cursor::after { content:"▋"; color:var(--accent); animation:blink 1s steps(2) infinite; margin-left:1px; }
   @keyframes blink { 50%{opacity:0;} }
 
@@ -77,6 +79,9 @@
   .chip { text-decoration:none; color:var(--text); background:var(--chip-bg); border:1px solid var(--line);
     padding:4px 10px; border-radius:999px; font-size:12.5px; transition:.15s; }
   .chip:hover { border-color:var(--accent); color:var(--accent); }
+  .chip-law { border-color:#5b8def66; }
+  .chip-guidance { border-color:#c9a22766; }
+  .chip-court { border-color:#a46be066; }
   .thinking { color:var(--muted); font-size:13.5px; display:inline-flex; gap:6px; align-items:center; }
   .thinking .d { width:6px; height:6px; border-radius:50%; background:var(--muted); animation:bob 1.2s infinite; }
   .thinking .d:nth-child(2){animation-delay:.15s} .thinking .d:nth-child(3){animation-delay:.3s}
@@ -146,8 +151,28 @@ const withId = (o = {}) => ({ ...o, headers: { ...(o.headers || {}), "X-Client-I
 let ENGINE_LABEL = "Αναζήτηση";
 
 const api = (p, o) => fetch(BRAIN + p, withId(o)).then(r => r.json());
-function esc(s){ return s.replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
-function fmt(s){ return esc(s).replace(/\*\*(.+?)\*\*/g,"<strong>$1</strong>"); }
+function esc(s){ return String(s ?? "").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+/* light markdown + clickable citations: "[ν. 4412/2016, άρθρο 72]" -> link to that source */
+function fmt(s, cites){
+  let h = esc(s)
+    .replace(/^#{1,4}\s*(.+)$/gm, "<strong>$1</strong>")
+    .replace(/^\s*[*-]\s+/gm, "• ")
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+  if (cites && cites.size){
+    h = h.replace(/\[([^\[\]\n]{2,80})\]/g, (m, inner) => {
+      const parts = inner.split(/\s*;\s*/);
+      if (!parts.every(p => cites.has(p))) return m;
+      return "[" + parts.map(p =>
+        `<a class="cite" href="${esc(cites.get(p))}" target="_blank" rel="noopener">${p}</a>`).join("; ") + "]";
+    });
+  }
+  return h;
+}
+function citeMap(sources){
+  const m = new Map();
+  (sources || []).forEach(x => { const l = x.cite || `${x.number}/${x.year}`; if (x.pdf_url) m.set(esc(l), x.pdf_url); });
+  return m;
+}
 function scroll(){ document.getElementById("main").scrollTop = 1e9; }
 
 /* ---------- sidebar ---------- */
@@ -174,8 +199,8 @@ function newChat(){
   currentChat = null;
   localStorage.setItem("lastChat", "");
   thread.innerHTML = `<div class="empty">
-      <div class="big">Ρώτησε για τις αποφάσεις</div>
-      <div>Προδικαστικές προσφυγές δημοσίων συμβάσεων.</div>
+      <div class="big">Ρώτησε για τις δημόσιες συμβάσεις</div>
+      <div>Νομοθεσία, κατευθυντήριες οδηγίες και αποφάσεις — με παραπομπή σε κάθε πηγή.</div>
       <div class="examples">
         <button class="ex">Τι ισχύει για την εγγυητική επιστολή συμμετοχής;</button>
         <button class="ex">Πότε απορρίπτεται προσφορά ως ασυνήθιστα χαμηλή;</button>
@@ -192,7 +217,7 @@ async function openChat(id){
   messages.forEach(m => {
     if (m.role === "user") addUser(m.content);
     else { const el = addBot(); el.think.remove(); el.body.classList.remove("cursor");
-      el.body.innerHTML = fmt(m.content); renderSources(el.src, m.sources || []); }
+      el.body.innerHTML = fmt(m.content, citeMap(m.sources)); renderSources(el.src, m.sources || []); }
   });
   loadChats(); scroll();
 }
@@ -213,8 +238,12 @@ function addBot(){
 function renderSources(el, sources){
   if (!sources || !sources.length) return;
   el.style.display = "flex";
-  el.innerHTML = `<span class="lbl">Πηγές</span>` + sources.map(s =>
-    `<a class="chip" href="${s.pdf_url}" target="_blank" rel="noopener">${s.number}/${s.year}</a>`).join("");
+  el.innerHTML = `<span class="lbl">Πηγές</span>` + sources.map(s => {
+    const label = s.cite || `${s.number}/${s.year}`;
+    const kind = s.group && s.group !== "decision" ? ` chip-${esc(s.group)}` : "";
+    return `<a class="chip${kind}" href="${esc(s.pdf_url || "#")}" target="_blank" rel="noopener"`
+      + ` title="${esc(s.title || label)}">${esc(label)}</a>`;
+  }).join("");
 }
 
 /* ---------- ask ---------- */
@@ -226,7 +255,7 @@ async function ask(){
   addUser(text);
   q.value=""; q.style.height="auto";
   const el = addBot(); scroll();
-  let answer="";
+  let answer="", cites=null;
   try {
     const url = `${BRAIN}/ask?q=${encodeURIComponent(text)}` + (currentChat ? `&chat_id=${currentChat}` : "");
     const res = await fetch(url, withId({ headers:{ Accept:"text/event-stream" }}));
@@ -240,9 +269,9 @@ async function ask(){
         const line = f.trim(); if (!line.startsWith("data:")) continue;
         const ev = JSON.parse(line.slice(5).trim());
         if (ev.chat_id && !currentChat){ currentChat = ev.chat_id; localStorage.setItem("lastChat", String(ev.chat_id)); }
-        if (ev.t){ el.think.style.display="none"; answer += ev.t; el.body.innerHTML = fmt(answer); scroll(); }
+        if (ev.t){ el.think.style.display="none"; answer += ev.t; el.body.innerHTML = fmt(answer, cites); scroll(); }
         else if (ev.error){ el.think.style.display="none"; answer += "\n\n⚠️ " + ev.error; el.body.innerHTML = fmt(answer); }
-        else if (ev.sources){ renderSources(el.src, ev.sources); scroll(); }
+        else if (ev.sources){ cites = citeMap(ev.sources); renderSources(el.src, ev.sources); scroll(); }
       }
     }
   } catch(err){
@@ -275,7 +304,10 @@ async function loadHealth(){
     document.getElementById("sub").textContent =
       hasLLM ? `${where} · ${ENGINE_LABEL}` : `${where} · αναζήτηση αποφάσεων`;
     document.getElementById("foot").textContent =
-      `${hasLLM ? ENGINE_LABEL : "Αναζήτηση"} · ${gr(h.decisions)} αποφάσεις`;
+      `${hasLLM ? ENGINE_LABEL : "Αναζήτηση"} · ${gr(h.decisions)} αποφάσεις`
+      + (h.by_group && h.by_group.law ? ` · ${gr(h.by_group.law)} άρθρα νομοθεσίας` : "")
+      + (h.by_group && h.by_group.guidance ? ` · ${gr(h.by_group.guidance)} οδηγίες` : "")
+      + (h.by_group && h.by_group.court ? ` · ${gr(h.by_group.court)} δικαστικές αποφάσεις` : "");
     const ub = document.getElementById("userbar");
     if (h.user) {
       ub.style.display = "flex";

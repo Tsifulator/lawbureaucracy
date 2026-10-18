@@ -1,0 +1,47 @@
+{
+  "_comment": "Extra legal sources beyond the ΕΑΔΗΣΥ decisions. Run `python sources.py probe` first, then `python sources.py run`. 'cite' is the exact label users and the AI see; keep it in the usual Greek legal form.",
+
+  "eu": [
+    {"id": "dir-2014-24", "celex": "32014L0024", "number": "24", "year": "2014",
+     "cite": "Οδηγία 2014/24/ΕΕ", "title": "Δημόσιες συμβάσεις (κλασικοί τομείς)"},
+    {"id": "dir-2014-25", "celex": "32014L0025", "number": "25", "year": "2014",
+     "cite": "Οδηγία 2014/25/ΕΕ", "title": "Συμβάσεις φορέων ύδρευσης, ενέργειας, μεταφορών, ταχυδρομείων"},
+    {"id": "dir-2014-23", "celex": "32014L0023", "number": "23", "year": "2014",
+     "cite": "Οδηγία 2014/23/ΕΕ", "title": "Συμβάσεις παραχώρησης"},
+    {"id": "dir-1989-665", "celex": "31989L0665", "number": "665", "year": "1989",
+     "cite": "Οδηγία 89/665/ΕΟΚ", "title": "Διαδικασίες προσφυγής (κλασικοί τομείς)"},
+    {"id": "dir-1992-13", "celex": "31992L0013", "number": "13", "year": "1992",
+     "cite": "Οδηγία 92/13/ΕΟΚ", "title": "Διαδικασίες προσφυγής (ειδικοί τομείς)"},
+    {"id": "dir-2007-66", "celex": "32007L0066", "number": "66", "year": "2007",
+     "cite": "Οδηγία 2007/66/ΕΚ", "title": "Βελτίωση της αποτελεσματικότητας των διαδικασιών προσφυγής"}
+  ],
+
+  "laws": [
+    {"id": "n4412-2016", "number": "4412", "year": "2016", "cite": "ν. 4412/2016",
+     "title": "Δημόσιες Συμβάσεις Έργων, Προμηθειών και Υπηρεσιών",
+     "url": null, "file": null,
+     "discover": "(?i)4412.{0,40}(κωδικ|ενοποιη|kodik|enopoi|consolid)|((κωδικ|ενοποιη|kodik|enopoi).{0,40}4412)"},
+    {"id": "n4782-2021", "number": "4782", "year": "2021", "cite": "ν. 4782/2021",
+     "title": "Εκσυγχρονισμός, απλοποίηση και αναμόρφωση του ρυθμιστικού πλαισίου των δημοσίων συμβάσεων",
+     "url": null, "file": null, "discover": "(?i)4782"}
+  ],
+
+  "crawl": [
+    {"id": "eadhsy-guidance", "source": "guidance", "cite_prefix": "ΕΑΔΗΣΥ",
+     "start": ["https://eadhsy.gr/"], "domain": "eadhsy.gr", "depth": 2, "max_pages": 120,
+     "doc_match": "(?i)(κατευθυντ|kateuth|kateyth|katefth|odhgi|odigi|guideline|πρότυπ|protyp|prototyp|tefxi|teuxi|τεύχ|γνωμοδ|gnomod|egkyklio|εγκύκλ|faq|ερωτήσ|erotis)",
+     "exclude": "(?i)(apofasi|/pdf/apofaseis/|ekthesi|προκήρυξ|prokirix|diagonism|proslipsi)",
+     "max_docs": 400},
+    {"id": "elsyn", "source": "elsyn", "cite_prefix": "ΕλΣυν",
+     "start": ["https://www.elsyn.gr/"], "domain": "elsyn.gr", "depth": 2, "max_pages": 80,
+     "doc_match": "(?i)(πράξ|praxi|απόφασ|apofas|nomolog|νομολογ|kleisimo|ΣΤ' Τμήμα|tmima)",
+     "exclude": "(?i)(ekthesi|έκθεσ|προκήρυξ|diagonism)",
+     "max_docs": 300},
+    {"id": "ste", "source": "ste", "cite_prefix": "ΣτΕ",
+     "start": ["https://www.adjustice.gr/", "https://www.ste.gr/"], "domain": "adjustice.gr|ste.gr",
+     "depth": 2, "max_pages": 80,
+     "doc_match": "(?i)(απόφασ|apofas|nomolog|νομολογ|decision)",
+     "exclude": "(?i)(προκήρυξ|diagonism)",
+     "max_docs": 300}
+  ]
+}

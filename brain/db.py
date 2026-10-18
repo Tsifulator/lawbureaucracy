@@ -46,7 +46,55 @@ def init(con):
         CREATE INDEX IF NOT EXISTS idx_decisions_status ON decisions(status);
         """
     )
+    # Multi-source columns (added later; existing rows = ΕΑΔΗΣΥ decisions).
+    #   source  : eadhsy | law_gr | law_eu | guidance | elsyn | ste | ...
+    #   cite    : the exact citation label shown to users and the LLM,
+    #             e.g. "ν. 4412/2016, άρθρο 72" or "Οδηγία 2014/24/ΕΕ, άρθρο 57"
+    #   title   : human title (article heading, document name)
+    #   article : article number for legislation (for "άρθρο 72 ν. 4412/2016")
+    have = {r[1] for r in con.execute("PRAGMA table_info(decisions)")}
+    for col in ("source", "cite", "title", "article"):
+        if col not in have:
+            con.execute(f"ALTER TABLE decisions ADD COLUMN {col} TEXT")
+    con.execute("CREATE INDEX IF NOT EXISTS idx_decisions_source ON decisions(source)")
     con.commit()
+
+
+# Retrieval groups: each gets its own slots in the LLM context so 660k
+# decision chunks can't crowd out a 400-article law.
+GROUPS = {
+    "eadhsy": "decision",
+    "law_gr": "law",
+    "law_eu": "law",
+    "guidance": "guidance",
+    "elsyn": "court",
+    "ste": "court",
+}
+
+
+def group_of(source) -> str:
+    return GROUPS.get(source or "eadhsy", "other")
+
+
+def upsert_doc(con, d):
+    """Insert/update a non-ΕΑΔΗΣΥ document (law article, guidance, ruling)."""
+    d = {**{"number": None, "year": None, "dtype": None, "source_date": None,
+            "raw_json": None, "article": None, "title": None}, **d}
+    con.execute(
+        """
+        INSERT INTO decisions (id, number, year, dtype, pdf_url, source_date, raw_json,
+                               scraped_at, source, cite, title, article)
+        VALUES (:id, :number, :year, :dtype, :pdf_url, :source_date, :raw_json,
+                :scraped_at, :source, :cite, :title, :article)
+        ON CONFLICT(id) DO UPDATE SET
+            number=excluded.number, year=excluded.year, dtype=excluded.dtype,
+            pdf_url=excluded.pdf_url, source_date=excluded.source_date,
+            raw_json=excluded.raw_json, scraped_at=excluded.scraped_at,
+            source=excluded.source, cite=excluded.cite, title=excluded.title,
+            article=excluded.article
+        """,
+        d,
+    )
 
 
 def upsert_decision(con, d):
