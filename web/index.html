@@ -168,9 +168,19 @@ function fmt(s, cites){
   }
   return h;
 }
+/* ΕΑΔΗΣΥ decision links go through the server, which finds a copy that still
+   exists (many stored links point at paths the site has since moved). */
+function docHref(url){
+  if (!url) return "#";
+  try {
+    const h = new URL(url).hostname;
+    if (/(^|\.)(eadhsy\.gr|aepp-procurement\.gr)$/.test(h)) return `${BRAIN}/doc?u=${encodeURIComponent(url)}`;
+  } catch {}
+  return url;
+}
 function citeMap(sources){
   const m = new Map();
-  (sources || []).forEach(x => { const l = x.cite || `${x.number}/${x.year}`; if (x.pdf_url) m.set(esc(l), x.pdf_url); });
+  (sources || []).forEach(x => { const l = x.cite || `${x.number}/${x.year}`; if (x.pdf_url) m.set(esc(l), docHref(x.pdf_url)); });
   return m;
 }
 function scroll(){ document.getElementById("main").scrollTop = 1e9; }
@@ -241,7 +251,7 @@ function renderSources(el, sources){
   el.innerHTML = `<span class="lbl">Πηγές</span>` + sources.map(s => {
     const label = s.cite || `${s.number}/${s.year}`;
     const kind = s.group && s.group !== "decision" ? ` chip-${esc(s.group)}` : "";
-    return `<a class="chip${kind}" href="${esc(s.pdf_url || "#")}" target="_blank" rel="noopener"`
+    return `<a class="chip${kind}" href="${esc(docHref(s.pdf_url))}" target="_blank" rel="noopener"`
       + ` title="${esc(s.title || label)}">${esc(label)}</a>`;
   }).join("");
 }

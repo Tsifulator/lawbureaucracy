@@ -77,6 +77,41 @@ def get_index(rebuild=False):
     return INDEX
 
 
+_DOC_HOSTS = ("eadhsy.gr", "aepp-procurement.gr")
+_DOC_CACHE: dict[str, str] = {}
+
+
+def _pdf_ok(url: str) -> bool:
+    import urllib.request
+    from config import USER_AGENT
+    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Range": "bytes=0-1023"})
+    try:
+        with urllib.request.urlopen(req, timeout=8) as r:
+            head = r.read(8)
+            return r.status in (200, 206) and (head.startswith(b"%PDF")
+                                               or "pdf" in r.headers.get("Content-Type", ""))
+    except Exception:
+        return False
+
+
+def _working_pdf_url(url: str):
+    """First reachable candidate for a decision PDF (cached), or the ΕΑΔΗΣΥ
+    decisions page if none answers. None if the host isn't ΕΑΔΗΣΥ's."""
+    host = urlparse(url).netloc.lower()
+    if not url.startswith(("http://", "https://")) or not any(
+            host == h or host.endswith("." + h) for h in _DOC_HOSTS):
+        return None
+    if url in _DOC_CACHE:
+        return _DOC_CACHE[url]
+    name = url.rsplit("/", 1)[-1]
+    candidates = [f"https://eadhsy.gr/pdf/apofaseis/{name}", url]
+    found = next((c for c in candidates if _pdf_ok(c)), None)
+    if found:
+        _DOC_CACHE[url] = found
+        return found
+    return "https://eadhsy.gr/apofaseis/"  # not cached: retry next time
+
+
 def _group_counts(idx):
     """Documents per retrieval group, for the footer ("812 άρθρα νόμων" etc.)."""
     import db
@@ -256,6 +291,22 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    # --- decision PDFs: many stored links point at dead paths ------------
+    def _doc_redirect(self, url):
+        """302 to a working copy of an ΕΑΔΗΣΥ decision PDF.
+
+        Older rows link to www.aepp-procurement.gr (the predecessor authority)
+        or to eadhsy.gr/images/Apofaseis_AEPP/…, which now 404. ΕΑΔΗΣΥ serves
+        the same file names under /pdf/apofaseis/. Only these hosts are
+        accepted, so this can't be abused as an open redirect."""
+        target = _working_pdf_url(url)
+        if not target:
+            return self._send({"error": "unknown document host"}, 400)
+        self.send_response(302)
+        self.send_header("Location", target)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
     # --- CORS preflight ------------------------------------------------
     def do_OPTIONS(self):
         self.send_response(204)
@@ -292,6 +343,9 @@ class Handler(BaseHTTPRequestHandler):
                 "answers_ready": _answers_ready(),
                 "user": self._user(),  # who's logged in (None if open/localhost)
             })
+
+        if u.path == "/doc":
+            return self._doc_redirect((qs.get("u") or [""])[0])
 
         if u.path == "/search":
             q = (qs.get("q") or [""])[0].strip()

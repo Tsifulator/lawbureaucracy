@@ -109,6 +109,7 @@ def stream_answer(prompt: str, timeout: int = 300):
     except urllib.error.HTTPError as e:
         detail = e.read().decode("utf-8", "replace")[:300]
         raise GeminiError(f"Gemini HTTP {e.code}: {detail}")
+    finish, blocked, got_text = None, None, False
     with resp:
         for raw in resp:  # SSE lines
             line = raw.decode("utf-8", "replace").strip()
@@ -119,9 +120,26 @@ def stream_answer(prompt: str, timeout: int = 300):
                 continue
             try:
                 chunk = json.loads(payload)
-                parts = chunk["candidates"][0]["content"]["parts"]
-                for p in parts:
-                    if "text" in p:
-                        yield p["text"]
-            except (KeyError, IndexError, json.JSONDecodeError):
+            except json.JSONDecodeError:
+                print(f"gemini: unparsable SSE line ({len(payload)} chars)", flush=True)
                 continue
+            fb = chunk.get("promptFeedback") or {}
+            if fb.get("blockReason"):
+                blocked = fb["blockReason"]
+            for cand in chunk.get("candidates") or []:
+                finish = cand.get("finishReason") or finish
+                for p in (cand.get("content") or {}).get("parts") or []:
+                    if "text" in p and not p.get("thought"):
+                        got_text = True
+                        yield p["text"]
+    # Say so when the answer didn't end normally, instead of silently
+    # showing half a sentence.
+    if blocked:
+        print(f"gemini: prompt blocked ({blocked})", flush=True)
+        yield f"\n\n⚠️ Το Gemini αρνήθηκε να απαντήσει ({blocked})."
+    elif finish and finish != "STOP":
+        print(f"gemini: finishReason={finish}", flush=True)
+        why = {"MAX_TOKENS": "έφτασε το όριο μήκους"}.get(finish, finish)
+        yield f"\n\n⚠️ (Η απάντηση διακόπηκε: {why}.)"
+    elif not got_text:
+        yield "⚠️ Το Gemini δεν επέστρεψε κείμενο. Δοκίμασε ξανά."
